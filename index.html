@@ -1,0 +1,270 @@
+<!DOCTYPE html>
+<html lang="bn">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>  -  </title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/fabric.js/5.3.1/fabric.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@imgly/background-removal/dist/browser.js"></script>
+    <style>
+        :root {
+            --primary-color: #007bff; --secondary-color: #6c757d; --success-color: #28a745;
+            --danger-color: #dc3545; --warning-color: #ffc107; --info-color: #17a2b8;
+            --light-bg: #f8f9fa; --border-color: #dee2e6; --text-color: #343a40;
+        }
+        body { 
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; 
+            background-color: #e9ebee; color: var(--text-color); margin: 0; padding: 0;
+            display: flex; flex-direction: column; height: 100vh; overflow: hidden;
+        }
+        .preview-panel { 
+            flex-shrink: 0; position: relative; display: flex; align-items: center; justify-content: center;
+            background-color: #343a40; height: 50vh;
+        }
+        .canvas-container { max-width: 100%; max-height: 100%; border-radius: 8px; box-shadow: 0 4px 15px rgba(0,0,0,0.2); }
+        .controls-panel { flex-grow: 1; padding: 15px; overflow-y: auto; background: #fff; }
+        .control-section { background: var(--light-bg); border: 1px solid var(--border-color); padding: 15px; border-radius: 8px; margin-bottom: 20px; }
+        .control-section h3 { margin-top: 0; margin-bottom: 15px; font-size: 16px; color: #495057; border-bottom: 1px solid var(--border-color); padding-bottom: 10px; }
+        button, .file-label, input[type="text"], select { width: 100%; padding: 12px; border-radius: 8px; border: 1px solid var(--border-color); cursor: pointer; font-size: 16px; font-weight: 600; transition: all 0.2s ease; margin-top: 5px; box-sizing: border-box; }
+        button, .file-label { border: none; }
+        button:disabled { background-color: #ccc; cursor: not-allowed; }
+        .file-label { display: block; text-align: center; }
+        input[type="file"] { display: none; }
+        .btn-primary { background-color: var(--primary-color); color: white; } .btn-danger { background-color: var(--danger-color); color: white; }
+        .btn-success { background-color: var(--success-color); color: white; } .btn-secondary { background-color: var(--secondary-color); color: white; }
+        .btn-warning { background-color: var(--warning-color); color: black; } .btn-info { background-color: var(--info-color); color: white; }
+        .hidden-controls { display: none; }
+        #loader { text-align: center; padding: 10px; font-weight: bold; color: var(--primary-color); }
+        .input-group { display: flex; gap: 10px; align-items: center; margin-top: 10px; margin-bottom: 10px; }
+        .input-group label { flex-shrink: 0; margin-bottom: 0; }
+        .input-group input[type="color"] { padding: 0; height: 40px; }
+        .modal { display: none; position: fixed; z-index: 1000; left: 0; top: 0; width: 100%; height: 100%; overflow: auto; background-color: rgba(0,0,0,0.6); align-items: center; justify-content: center; }
+        .modal-content { background-color: #fff; margin: auto; padding: 20px; border-radius: 10px; width: 95%; max-width: 600px; max-height: 90vh; display: flex; flex-direction: column; }
+        .modal-header { margin-bottom: 15px; } .modal-header h3 { margin: 0; }
+        .modal-body { overflow-y: auto; flex-grow: 1; } .modal-footer { margin-top: 15px; text-align: right; }
+        .link-row { display: flex; align-items: center; margin-bottom: 10px; gap: 10px; }
+        .link-label { font-size: 14px; font-weight: bold; width: 120px; text-align: right; flex-shrink: 0; }
+        .link-input { flex-grow: 1; border: 1px solid #ccc; padding: 8px; border-radius: 5px; font-size: 12px; }
+        .copy-btn { padding: 8px 12px; font-size: 12px; flex-shrink: 0; min-width: 60px; }
+    </style>
+</head>
+<body>
+    <div class="preview-panel"><canvas id="canvas"></canvas></div>
+    <div class="controls-panel">
+        <div class="control-section"><h3>.    </h3><label for="imageLoader" class="file-label btn-primary">   </label><input type="file" id="imageLoader" accept="image/*"><button id="resetBtn" class="btn-warning">  </button></div>
+        <div id="mainControls" class="hidden-controls">
+            <div class="control-section"><h3>. </h3><div style="display: flex; flex-direction: column; gap: 10px;"><button id="removeBgFastBtn" class="btn-info">  ()</button><button id="removeBgHQBtn" class="btn-danger">   ()</button></div><div id="loader" class="hidden-controls"> ...</div><label for="bgColorPicker" style="margin-top: 15px;"> :</label><input type="color" id="bgColorPicker" value="#ffffff" style="width: 100%; height: 40px;"></div>
+            <div class="control-section"><h3>.  </h3><label for="overlayImageLoader" class="file-label btn-secondary">/  </label><input type="file" id="overlayImageLoader" accept="image/*"><button id="addTextBtn" class="btn-primary" style="margin-top: 10px;">   </button></div>
+            <div id="contextualControls" class="control-section hidden-controls"><h3>.   </h3><div id="textEditor"><label> :</label><input type="text" id="textInput" placeholder=" ..."><div class="input-group"><label>:</label><input type="color" id="textColorPicker"><label>:</label><input type="color" id="strokeColorPicker"></div><label>:</label><select id="fontSelector"><option>Arial</option><option>Impact</option><option>Comic Sans MS</option></select></div><button id="deleteBtn" class="btn-danger" style="margin-top: 15px;"> </button></div>
+            <div class="control-section"><h3>.   </h3><button id="generateLinkBtn" class="btn-success">    </button></div>
+        </div>
+    </div>
+
+    <div id="linkModal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header"><h3 id="modalTitle"> </h3></div>
+            <div class="modal-body" id="imageLinksContainer"></div>
+            <div class="modal-footer"><button id="closeModalBtn" class="btn-secondary"> </button></div>
+        </div>
+    </div>
+
+    <script>
+        document.addEventListener('DOMContentLoaded', () => {
+            const REMOVEBG_API_KEY = "qwKyFZ2ETk3equVWD6jYg51Z";
+            const IMGBB_API_KEY = "07bb6a485d95048a7add76d3207d44be";
+            let originalFile = null;
+
+            const fabricCanvas = new fabric.Canvas('canvas', { backgroundColor: '#f8f9fa' });
+
+            // ---  DOM  ---
+            const mainControls = document.getElementById('mainControls'), imageLoader = document.getElementById('imageLoader');
+            const resetBtn = document.getElementById('resetBtn'), removeBgFastBtn = document.getElementById('removeBgFastBtn');
+            const loader = document.getElementById('loader'), bgColorPicker = document.getElementById('bgColorPicker');
+            const overlayImageLoader = document.getElementById('overlayImageLoader'), addTextBtn = document.getElementById('addTextBtn');
+            const contextualControls = document.getElementById('contextualControls'), textEditor = document.getElementById('textEditor');
+            const textInput = document.getElementById('textInput'), textColorPicker = document.getElementById('textColorPicker');
+            const strokeColorPicker = document.getElementById('strokeColorPicker'), fontSelector = document.getElementById('fontSelector');
+            const deleteBtn = document.getElementById('deleteBtn'), generateLinkBtn = document.getElementById('generateLinkBtn');
+            const linkModal = document.getElementById('linkModal'), modalTitle = document.getElementById('modalTitle');
+            const imageLinksContainer = document.getElementById('imageLinksContainer'), closeModalBtn = document.getElementById('closeModalBtn');
+            const canvasWrapper = document.querySelector('.preview-panel');
+
+            // ---    ---
+            const updateCanvasSize = (img) => {
+                const maxW = canvasWrapper.clientWidth * 0.95, maxH = canvasWrapper.clientHeight * 0.95;
+                const scale = Math.min(maxW / img.width, maxH / img.height);
+                fabricCanvas.setDimensions({ width: img.width * scale, height: img.height * scale });
+            };
+
+            const loadImageOnCanvas = (file) => {
+                const reader = new FileReader();
+                reader.onload = (event) => {
+                    fabric.Image.fromURL(event.target.result, img => {
+                        fabricCanvas.clear(); updateCanvasSize(img);
+                        fabricCanvas.setBackgroundImage(img, fabricCanvas.renderAll.bind(fabricCanvas), { scaleX: fabricCanvas.width / img.width, scaleY: fabricCanvas.height / img.height });
+                    });
+                };
+                reader.readAsDataURL(file);
+            };
+
+            const handleBgRemoval = (blob) => {
+                const reader = new FileReader();
+                reader.onload = (event) => {
+                    fabric.Image.fromURL(event.target.result, (newImg) => {
+                        fabricCanvas.setBackgroundImage(null, fabricCanvas.renderAll.bind(fabricCanvas));
+                        newImg.scaleToWidth(fabricCanvas.width);
+                        fabricCanvas.add(newImg).centerObject(newImg).renderAll();
+                    });
+                };
+                reader.readAsDataURL(blob);
+            };
+
+            // ---         ---
+            const updateContextualControls = () => {
+                const activeObject = fabricCanvas.getActiveObject();
+                if (activeObject && activeObject.type === 'i-text') {
+                    contextualControls.style.display = 'block';
+                    textEditor.style.display = 'block';
+                    textInput.value = activeObject.text;
+                    textColorPicker.value = activeObject.fill;
+                    strokeColorPicker.value = activeObject.stroke || '#ffffff';
+                    fontSelector.value = activeObject.fontFamily;
+                } else {
+                    contextualControls.style.display = 'none';
+                }
+            };
+            
+            fabricCanvas.on({ 'selection:created': updateContextualControls, 'selection:updated': updateContextualControls, 'selection:cleared': updateContextualControls });
+
+            // ---    ---
+            imageLoader.addEventListener('change', e => {
+                if (!e.target.files.length) return;
+                originalFile = e.target.files[0];
+                mainControls.style.display = 'block';
+                loadImageOnCanvas(originalFile);
+            });
+
+            removeBgFastBtn.addEventListener('click', () => {
+                if (!originalFile) return alert('   ');
+                loader.classList.remove('hidden-controls'); loader.textContent = '  ...';
+                const formData = new FormData(); formData.append('image_file', originalFile);
+                fetch('https://api.remove.bg/v1.0/removebg', { method: 'POST', headers: { 'X-Api-Key': REMOVEBG_API_KEY }, body: formData })
+                    .then(res => res.ok ? res.blob() : Promise.reject('API Error'))
+                    .then(blob => { handleBgRemoval(blob); loader.classList.add('hidden-controls'); })
+                    .catch(() => { loader.classList.add('hidden-controls'); alert("  "); });
+            });
+
+            overlayImageLoader.addEventListener('change', e => {
+                if (!e.target.files.length) return;
+                const reader = new FileReader();
+                reader.onload = event => fabric.Image.fromURL(event.target.result, img => { img.scaleToWidth(fabricCanvas.width * 0.3); fabricCanvas.add(img).centerObject(img).renderAll(); });
+                reader.readAsDataURL(e.target.files[0]);
+            });
+
+            addTextBtn.addEventListener('click', () => {
+                const text = new fabric.IText(' ', {
+                    left: 50, top: 50, fill: '#000000', fontFamily: 'Arial',
+                    stroke: '#ffffff', strokeWidth: 0 //    
+                });
+                fabricCanvas.add(text).setActiveObject(text);
+            });
+
+            textInput.addEventListener('input', (e) => {
+                const activeObject = fabricCanvas.getActiveObject();
+                if (activeObject && activeObject.type === 'i-text') {
+                    activeObject.set('text', e.target.value);
+                    fabricCanvas.requestRenderAll();
+                }
+            });
+
+            textColorPicker.addEventListener('input', (e) => {
+                const activeObject = fabricCanvas.getActiveObject();
+                if (activeObject && activeObject.type === 'i-text') {
+                    activeObject.set('fill', e.target.value);
+                    fabricCanvas.requestRenderAll();
+                }
+            });
+
+            strokeColorPicker.addEventListener('input', (e) => {
+                const activeObject = fabricCanvas.getActiveObject();
+                if (activeObject && activeObject.type === 'i-text') {
+                    activeObject.set('stroke', e.target.value);
+                    if (activeObject.strokeWidth === 0) {
+                        activeObject.set('strokeWidth', 1); //    
+                    }
+                    fabricCanvas.requestRenderAll();
+                }
+            });
+            
+            fontSelector.addEventListener('change', (e) => {
+                const activeObject = fabricCanvas.getActiveObject();
+                if (activeObject && activeObject.type === 'i-text') {
+                    activeObject.set('fontFamily', e.target.value);
+                    fabricCanvas.requestRenderAll();
+                }
+            });
+
+            deleteBtn.addEventListener('click', () => {
+                const activeObject = fabricCanvas.getActiveObject();
+                if(activeObject) fabricCanvas.remove(activeObject);
+            });
+
+            resetBtn.addEventListener('click', () => {
+                fabricCanvas.clear(); fabricCanvas.backgroundColor = '#f8f9fa'; fabricCanvas.renderAll();
+                mainControls.style.display = 'none';
+                contextualControls.style.display = 'none';
+                originalFile = null;
+            });
+
+            bgColorPicker.addEventListener('input', e => {
+                fabricCanvas.backgroundColor = e.target.value;
+                fabricCanvas.renderAll();
+            });
+
+            generateLinkBtn.addEventListener('click', () => {
+                if (fabricCanvas.isEmpty() && !fabricCanvas.backgroundImage) return alert("     ");
+                fabricCanvas.discardActiveObject().renderAll();
+                
+                modalTitle.textContent = "  ...";
+                imageLinksContainer.innerHTML = '<p style="text-align: center;">   ...</p>';
+                linkModal.style.display = 'flex';
+                
+                const dataURL = fabricCanvas.toDataURL({ format: 'png', multiplier: 3 });
+                const base64Data = dataURL.replace(/^data:image\/png;base64,/, "");
+                const formData = new FormData();
+                formData.append('image', base64Data);
+
+                fetch(`https://api.imgbb.com/1/upload?key=${IMGBB_API_KEY}`, { method: 'POST', body: formData })
+                .then(response => response.json())
+                .then(result => {
+                    if (result.success) {
+                        modalTitle.textContent = " "; imageLinksContainer.innerHTML = '';
+                        const data = result.data;
+                        const links = [
+                            { label: '', value: data.url_viewer }, { label: ' ', value: data.url },
+                            { label: 'Markdown', value: `![${data.title}](${data.url})` },
+                            { label: 'HTML Thumbnail', value: `<a href="${data.url_viewer}"><img src="${data.thumb.url}" alt="${data.title}"></a>` },
+                            { label: 'BBCode Thumbnail', value: `[url=${data.url_viewer}][img]${data.thumb.url}[/img][/url]` },
+                            { label: ' ', value: data.delete_url }
+                        ];
+
+                        links.forEach(link => {
+                            const row = document.createElement('div'); row.className = 'link-row';
+                            const label = document.createElement('label'); label.className = 'link-label'; label.textContent = link.label + ':';
+                            const input = document.createElement('input'); input.type = 'text'; input.className = 'link-input'; input.value = link.value; input.readOnly = true;
+                            const button = document.createElement('button'); button.className = 'copy-btn btn-primary'; button.textContent = '';
+                            button.onclick = () => { input.select(); navigator.clipboard.writeText(input.value).then(() => { button.textContent = ' !'; setTimeout(() => { button.textContent = ''; }, 2000); }); };
+                            row.appendChild(label); row.appendChild(input); row.appendChild(button);
+                            imageLinksContainer.appendChild(row);
+                        });
+                    } else { throw new Error(result.error.message); }
+                })
+                .catch(error => { alert(',    \n' + error.message); linkModal.style.display = 'none'; });
+            });
+
+            closeModalBtn.addEventListener('click', () => { linkModal.style.display = 'none'; });
+            window.addEventListener('click', (event) => { if (event.target == linkModal) linkModal.style.display = 'none'; });
+        });
+    </script>
+</body>
+</html>
