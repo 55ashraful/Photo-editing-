@@ -1,270 +1,913 @@
 <!DOCTYPE html>
 <html lang="bn">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>  -  </title>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/fabric.js/5.3.1/fabric.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/@imgly/background-removal/dist/browser.js"></script>
-    <style>
-        :root {
-            --primary-color: #007bff; --secondary-color: #6c757d; --success-color: #28a745;
-            --danger-color: #dc3545; --warning-color: #ffc107; --info-color: #17a2b8;
-            --light-bg: #f8f9fa; --border-color: #dee2e6; --text-color: #343a40;
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>এডমিন কন্ট্রোল প্যানেল - অটো থাম্বনেইল জেনারেটর সহ</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; font-family: 'Segoe UI', Arial, sans-serif; }
+    body { background-color: #121212; color: #fff; padding: 15px; }
+    .card { background: #1e1e1e; padding: 20px; border-radius: 10px; margin-bottom: 25px; box-shadow: 0 4px 10px rgba(0,0,0,0.5); }
+    h2 { color: #ff4757; font-size: 18px; margin-bottom: 15px; border-bottom: 1px solid #333; padding-bottom: 8px; }
+    .form-group { margin-bottom: 15px; }
+    label { display: block; margin-bottom: 6px; font-size: 14px; color: #ccc; }
+    input, select, textarea { width: 100%; padding: 12px; border: 1px solid #333; background: #2a2a2a; color: #fff; border-radius: 6px; font-size: 14px; }
+    textarea { height: 70px; font-family: monospace; resize: vertical; }
+    button { width: 100%; padding: 12px; border: none; border-radius: 6px; font-size: 15px; font-weight: bold; cursor: pointer; }
+    .btn-green { background: #2ed573; color: #000; }
+    .btn-blue { background: #1e90ff; color: #fff; }
+    .btn-orange { background: #ff7f50; color: #fff; }
+    .btn-red { background: #ff4757; color: #fff; }
+    .btn-dark-red { background: #d63031; color: #fff; }
+    #statusText { margin-top: 10px; font-size: 14px; color: #2ed573; text-align: center; font-weight: bold; }
+    #adminSection { display: none; }
+    #loginSection { max-width: 400px; margin: 50px auto; }
+    
+    .item-list { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; background: #2a2a2a; padding: 12px; border-radius: 6px; margin-bottom: 10px; gap: 10px; }
+    .item-info { flex: 1 1 200px; word-break: break-word; }
+    .item-info h4 { font-size: 14px; color: #fff; margin-bottom: 4px; }
+    .item-info span { display: inline-block; font-size: 12px; padding: 3px 8px; border-radius: 4px; margin-top: 5px; }
+    .action-btns { display: flex; gap: 8px; flex-wrap: wrap; }
+    .action-btns button { padding: 8px 12px; font-size: 12px; width: auto; flex-shrink: 0; }
+    
+    .badge-prem { background: #ffc107 !important; color: #000 !important; font-weight: bold; }
+
+    .episode-box { background: #252525; padding: 10px; border-radius: 6px; border: 1px solid #333; margin-bottom: 10px; }
+    .episode-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; }
+    .hint { font-size: 12px; color: #888; margin-top: 5px; line-height: 1.5; }
+  </style>
+
+  <!-- Firebase SDK -->
+  <script type="module">
+    import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js";
+    import { getAuth, signInWithEmailAndPassword, signOut, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-auth.js";
+    import { getDatabase, ref, push, set, remove, update, onValue, get } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-database.js";
+
+    const firebaseConfig = {
+      apiKey: "AIzaSyC3tgTH-Cp16LrJzAjgisfgvBTibRF0T4g",
+      authDomain: "studio-ar1ak.firebaseapp.com",
+      databaseURL: "https://studio-ar1ak-default-rtdb.firebaseio.com",
+      projectId: "studio-ar1ak",
+      storageBucket: "studio-ar1ak.firebasestorage.app",
+      messagingSenderId: "77389723660",
+      appId: "1:77389723660:web:2e35437b147041db02d629"
+    };
+
+        /* ✅✅ Cloudinary সেটিংস — গ্যালারি থেকে ভিডিও আপলোডের জন্য
+       ⚠️ যদি Cloud Name ভুল হয়, শুধু নিচের ১ম লাইনের ভিতরের নাম বদলান */
+    const CLOUDINARY_CLOUD_NAME = "vykf8dhp";
+    const CLOUDINARY_PRESET = "nvideo";
+
+    /* ✅ imgbb key — সরাসরি এখানে বসানো (কভার ছবি আপলোডের জন্য) */
+    let IMGBB_API_KEY = "d617dab9d2117228e38549791d42104a";
+
+    const app = initializeApp(firebaseConfig);
+    const auth = getAuth(app);
+    const db = getDatabase(app);
+
+    // 🌐 ভিডিও লিংক ফরম্যাটার
+    function formatVideoEmbedUrl(url) {
+      if (!url) return '';
+      let cleanUrl = url.trim();
+
+      if (cleanUrl.includes('<iframe')) {
+        const srcMatch = cleanUrl.match(/src=["']([^"']+)["']/);
+        if (srcMatch && srcMatch[1]) cleanUrl = srcMatch[1];
+      }
+
+      /* ✅ Cloudinary / MP4 / সরাসরি আপলোড করা লিংক হলে হাত দেওয়া হবে না */
+      if (cleanUrl.includes('cloudinary.com') || /\.(mp4|webm|mov|m4v)(\?|$)/i.test(cleanUrl)) {
+        return cleanUrl;
+      }
+
+      if (cleanUrl.includes('youtube.com') || cleanUrl.includes('youtu.be')) {
+        let videoId = cleanUrl.includes('youtu.be/') ? cleanUrl.split('youtu.be/')[1].split('?')[0] : 
+                      (cleanUrl.includes('watch?v=') ? cleanUrl.split('v=')[1].split('&')[0] : cleanUrl);
+        return cleanUrl.includes('/embed/') ? cleanUrl : `https://www.youtube.com/embed/${videoId}`;
+      }
+
+      if (cleanUrl.includes('dailymotion.com') || cleanUrl.includes('dai.ly')) {
+        let videoId = cleanUrl.includes('/video/') ? cleanUrl.split('/video/')[1].split('?')[0] : 
+                      (cleanUrl.includes('dai.ly/') ? cleanUrl.split('dai.ly/')[1].split('?')[0] : cleanUrl);
+        return cleanUrl.includes('/embed/video/') ? cleanUrl : `https://www.dailymotion.com/embed/video/${videoId}`;
+      }
+      
+      /* ✅ XNXX — অফিসিয়াল embed ফরম্যাট */
+      if (cleanUrl.includes('xnxx.com')) {
+        if (cleanUrl.includes('/embedframe/')) return cleanUrl;
+        const xm = cleanUrl.match(/xnxx\.com\/video-([^\/\?\#]+)/);
+        if (xm && xm[1]) {
+          return `https://www.xnxx.com/embedframe/${xm[1]}`;
         }
-        body { 
-            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; 
-            background-color: #e9ebee; color: var(--text-color); margin: 0; padding: 0;
-            display: flex; flex-direction: column; height: 100vh; overflow: hidden;
+        return cleanUrl;
+      }
+
+      /* ✅ ফেসবুক — ভিডিও ID বের করে সঠিক embed বানানো হচ্ছে (সব লিংক ফরম্যাটে) */
+      if (cleanUrl.includes('facebook.com') || cleanUrl.includes('fb.watch')) {
+        let fm = cleanUrl.match(/facebook\.com\/watch\/?\?v=(\d+)/);
+        if (!fm) fm = cleanUrl.match(/facebook\.com\/[^\/]+\/videos\/(?:[^\/]+\/)?(\d+)/);
+        if (!fm) fm = cleanUrl.match(/facebook\.com\/reel\/(\d+)/);
+        if (!fm) fm = cleanUrl.match(/facebook\.com\/(?:photo|video)\.php\?v=(\d+)/);
+        if (fm && fm[1]) {
+          return `https://www.facebook.com/plugins/video.php?href=${encodeURIComponent('https://www.facebook.com/watch/?v=' + fm[1])}&show_text=false`;
         }
-        .preview-panel { 
-            flex-shrink: 0; position: relative; display: flex; align-items: center; justify-content: center;
-            background-color: #343a40; height: 50vh;
+        return `https://www.facebook.com/plugins/video.php?href=${encodeURIComponent(cleanUrl)}&show_text=false`;
+      }
+
+      /* ✅ টিকটক */
+      const tm = cleanUrl.match(/tiktok\.com\/(?:@[^\/]+\/)?video\/(\d+)/);
+      if (tm) return `https://www.tiktok.com/embed/v2/${tm[1]}`;
+
+      return cleanUrl;
+    }
+
+    // ⚡ সোশ্যাল মিডিয়া ভিডিও থেকে অটো-থাম্বনেইল
+    function generateAutoThumbnail(url) {
+      if (!url) return 'https://via.placeholder.com/600x350/111111/FFFFFF?text=No+Cover+Image';
+
+      let cleanUrl = url.trim();
+
+      // ১. ইউটিউব
+      if (cleanUrl.includes('youtube.com') || cleanUrl.includes('youtu.be')) {
+        let videoId = "";
+        if (cleanUrl.includes('youtu.be/')) {
+          videoId = cleanUrl.split('youtu.be/')[1].split('?')[0];
+        } else if (cleanUrl.includes('watch?v=')) {
+          videoId = cleanUrl.split('v=')[1].split('&')[0];
+        } else if (cleanUrl.includes('/embed/')) {
+          videoId = cleanUrl.split('/embed/')[1].split('?')[0];
         }
-        .canvas-container { max-width: 100%; max-height: 100%; border-radius: 8px; box-shadow: 0 4px 15px rgba(0,0,0,0.2); }
-        .controls-panel { flex-grow: 1; padding: 15px; overflow-y: auto; background: #fff; }
-        .control-section { background: var(--light-bg); border: 1px solid var(--border-color); padding: 15px; border-radius: 8px; margin-bottom: 20px; }
-        .control-section h3 { margin-top: 0; margin-bottom: 15px; font-size: 16px; color: #495057; border-bottom: 1px solid var(--border-color); padding-bottom: 10px; }
-        button, .file-label, input[type="text"], select { width: 100%; padding: 12px; border-radius: 8px; border: 1px solid var(--border-color); cursor: pointer; font-size: 16px; font-weight: 600; transition: all 0.2s ease; margin-top: 5px; box-sizing: border-box; }
-        button, .file-label { border: none; }
-        button:disabled { background-color: #ccc; cursor: not-allowed; }
-        .file-label { display: block; text-align: center; }
-        input[type="file"] { display: none; }
-        .btn-primary { background-color: var(--primary-color); color: white; } .btn-danger { background-color: var(--danger-color); color: white; }
-        .btn-success { background-color: var(--success-color); color: white; } .btn-secondary { background-color: var(--secondary-color); color: white; }
-        .btn-warning { background-color: var(--warning-color); color: black; } .btn-info { background-color: var(--info-color); color: white; }
-        .hidden-controls { display: none; }
-        #loader { text-align: center; padding: 10px; font-weight: bold; color: var(--primary-color); }
-        .input-group { display: flex; gap: 10px; align-items: center; margin-top: 10px; margin-bottom: 10px; }
-        .input-group label { flex-shrink: 0; margin-bottom: 0; }
-        .input-group input[type="color"] { padding: 0; height: 40px; }
-        .modal { display: none; position: fixed; z-index: 1000; left: 0; top: 0; width: 100%; height: 100%; overflow: auto; background-color: rgba(0,0,0,0.6); align-items: center; justify-content: center; }
-        .modal-content { background-color: #fff; margin: auto; padding: 20px; border-radius: 10px; width: 95%; max-width: 600px; max-height: 90vh; display: flex; flex-direction: column; }
-        .modal-header { margin-bottom: 15px; } .modal-header h3 { margin: 0; }
-        .modal-body { overflow-y: auto; flex-grow: 1; } .modal-footer { margin-top: 15px; text-align: right; }
-        .link-row { display: flex; align-items: center; margin-bottom: 10px; gap: 10px; }
-        .link-label { font-size: 14px; font-weight: bold; width: 120px; text-align: right; flex-shrink: 0; }
-        .link-input { flex-grow: 1; border: 1px solid #ccc; padding: 8px; border-radius: 5px; font-size: 12px; }
-        .copy-btn { padding: 8px 12px; font-size: 12px; flex-shrink: 0; min-width: 60px; }
-    </style>
+        return `https://img.youtube.com/vi/${videoId}/hqdefault.jpg`;
+      }
+
+      // ২. ডেইলিমোশন
+      if (cleanUrl.includes('dailymotion.com') || cleanUrl.includes('dai.ly')) {
+        let videoId = "";
+        if (cleanUrl.includes('/video/')) {
+          videoId = cleanUrl.split('/video/')[1].split('?')[0];
+        } else if (cleanUrl.includes('/embed/video/')) {
+          videoId = cleanUrl.split('/embed/video/')[1].split('?')[0];
+        } else if (cleanUrl.includes('dai.ly/')) {
+          videoId = cleanUrl.split('dai.ly/')[1].split('?')[0];
+        }
+        return `https://www.dailymotion.com/thumbnail/video/${videoId}`;
+      }
+
+      // ৩. ফেসবুক
+      if (cleanUrl.includes('facebook.com') || cleanUrl.includes('fb.watch')) {
+        const m = cleanUrl.match(/(?:videos\/(?:.*?\/)?|watch\/?\?v=|fb\.watch\/|[?&]v=)(\d{5,})/);
+        if (m && m[1]) return `https://graph.facebook.com/${m[1]}/picture?type=normal`;
+        return 'https://via.placeholder.com/600x350/111111/FFFFFF?text=Drama+Video';
+      }
+
+      return 'https://via.placeholder.com/600x350/111111/FFFFFF?text=Drama+Video';
+    }
+
+    /* ✅ টিকটক ভিডিওর থাম্বনেইল অটো আনা */
+    async function fetchTikTokThumb(url) {
+      try {
+        const m = url.match(/tiktok\.com\/(?:@[^\/]+\/)?video\/(\d+)/);
+        if (!m) return null;
+        const res = await fetch('https://www.tiktok.com/oembed?url=' + encodeURIComponent(url));
+        const data = await res.json();
+        return data && data.thumbnail_url ? data.thumbnail_url : null;
+      } catch (e) { return null; }
+    }
+
+    // ১. অথেনটিকেশন
+    onAuthStateChanged(auth, (user) => {
+      if (user) {
+        document.getElementById('loginSection').style.display = 'none';
+        document.getElementById('adminSection').style.display = 'block';
+        loadCategories();
+        loadBanners();
+        loadVideos();
+        loadAccessRequests();
+        loadSettings();
+      } else {
+        document.getElementById('loginSection').style.display = 'block';
+        document.getElementById('adminSection').style.display = 'none';
+      }
+    });
+
+    // ২. লগইন/লগআউট
+    document.getElementById('loginForm').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      try {
+        await signInWithEmailAndPassword(auth, document.getElementById('loginEmail').value, document.getElementById('loginPass').value);
+      } catch (err) {
+        document.getElementById('loginError').innerText = "লগইন ভুল হয়েছে: " + err.message;
+      }
+    });
+    document.getElementById('logoutBtn').addEventListener('click', () => signOut(auth));
+
+    // ৩. ক্যাটাগরি
+    document.getElementById('catForm').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const catName = document.getElementById('newCategoryName').value.trim();
+      if (!catName) return alert("ক্যাটাগরির নাম লিখুন");
+
+      try {
+        await push(ref(db, 'categories'), { name: catName });
+        document.getElementById('newCategoryName').value = "";
+        alert("ক্যাটাগরি যুক্ত হয়েছে!");
+      } catch (err) {
+        alert("ক্যাটাগরি সেভ হয়নি: " + err.message);
+      }
+    });
+
+    function loadCategories() {
+      onValue(ref(db, 'categories'), (snapshot) => {
+        const categorySelect = document.getElementById('category');
+        const catList = document.getElementById('categoryList');
+        categorySelect.innerHTML = "";
+        catList.innerHTML = "";
+        
+        const data = snapshot.val();
+        if (data) {
+          Object.keys(data).forEach((key) => {
+            const cat = data[key];
+            const option = document.createElement('option');
+            option.value = cat.name;
+            option.innerText = cat.name;
+            categorySelect.appendChild(option);
+
+            const div = document.createElement('div');
+            div.className = 'item-list';
+            div.innerHTML = `
+              <span>${cat.name}</span>
+              <div class="action-btns">
+                <button class="btn-blue" onclick="editCategory('${key}', '${cat.name}')">এডিট</button>
+                <button class="btn-red" onclick="deleteCategory('${key}')">ডিলিট</button>
+              </div>
+            `;
+            catList.appendChild(div);
+          });
+        } else {
+          categorySelect.innerHTML = "<option value=''>কোনো ক্যাটাগরি নাই, তৈরি করুন</option>";
+          catList.innerHTML = "<p style='color:#aaa;'>কোনো ক্যাটাগরি তৈরি করা হয়নি</p>";
+        }
+      });
+    }
+
+    window.editCategory = async (key, currentName) => {
+      const newName = prompt("নতুন ক্যাটাগরির নাম লিখুন:", currentName);
+      if (newName && newName.trim() !== "") {
+        await update(ref(db, `categories/${key}`), { name: newName.trim() });
+        alert("ক্যাটাগরি আপডেট হয়েছে!");
+      }
+    };
+
+    window.deleteCategory = async (key) => {
+      if (confirm("এই ক্যাটাগরি ডিলিট করতে চান?")) {
+        await remove(ref(db, `categories/${key}`));
+      }
+    };
+
+    // ৪. ব্যানার
+    document.getElementById('bannerForm').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const imgUrl = document.getElementById('bannerImg').value.trim();
+      const title = document.getElementById('bannerTitle').value.trim();
+      const linkUrl = document.getElementById('bannerLink').value.trim();
+
+      try {
+        await push(ref(db, 'heroBanners'), {
+          imgUrl: imgUrl,
+          title: title || '',
+          linkUrl: linkUrl || '',
+          createdAt: Date.now()
+        });
+        alert("✅ ব্যানার যুক্ত হয়েছে!");
+        document.getElementById('bannerForm').reset();
+      } catch (err) {
+        alert("ব্যানার সেভ হয়নি: " + err.message);
+      }
+    });
+
+    function loadBanners() {
+      onValue(ref(db, 'heroBanners'), (snapshot) => {
+        const bannerList = document.getElementById('bannerList');
+        bannerList.innerHTML = "";
+        const data = snapshot.val();
+        if (data) {
+          Object.keys(data).forEach((key) => {
+            const item = data[key];
+            const div = document.createElement('div');
+            div.className = 'item-list';
+            div.innerHTML = `
+              <div style="display:flex; align-items:center; gap:10px;">
+                <img src="${item.imgUrl}" style="width:60px; height:35px; object-fit:cover; border-radius:4px;">
+                <div><strong>${item.title || 'ব্যানার'}</strong></div>
+              </div>
+              <div class="action-btns">
+                <button class="btn-blue" onclick="editBanner('${key}', '${item.imgUrl}', '${item.title || ''}', '${item.linkUrl || ''}')">এডিট</button>
+                <button class="btn-red" onclick="deleteBanner('${key}')">ডিলিট</button>
+              </div>
+            `;
+            bannerList.appendChild(div);
+          });
+        } else {
+          bannerList.innerHTML = "<p style='color:#aaa;'>কোনো ব্যানার যুক্ত করা হয়নি</p>";
+        }
+      });
+    }
+
+    window.editBanner = async (key, currentImg, currentTitle, currentLink) => {
+      const newImg = prompt("নতুন ব্যানার ইমেজ URL দিন:", currentImg);
+      if (!newImg) return;
+      const newTitle = prompt("নতুন ব্যানার টাইটেল দিন:", currentTitle);
+      const newLink = prompt("নতুন রিডাইরেক্ট/ভিডিও লিংক দিন:", currentLink);
+
+      await update(ref(db, `heroBanners/${key}`), {
+        imgUrl: newImg.trim(),
+        title: newTitle !== null ? newTitle.trim() : '',
+        linkUrl: newLink !== null ? newLink.trim() : ''
+      });
+      alert("ব্যানার আপডেট হয়েছে!");
+    };
+
+    window.deleteBanner = async (key) => {
+      if (confirm("ব্যানারটি ডিলিট করতে চান?")) {
+        await remove(ref(db, `heroBanners/${key}`));
+      }
+    };
+
+    window.handleTypeChange = () => {
+      const type = document.getElementById('videoType').value;
+      const catGroup = document.getElementById('categoryGroup');
+      if (type === 'premium') {
+        catGroup.style.display = 'none';
+      } else {
+        catGroup.style.display = 'block';
+      }
+    };
+
+    let episodeCount = 1;
+    window.addEpisodeRow = () => {
+      episodeCount++;
+      const container = document.getElementById('episodesContainer');
+      const div = document.createElement('div');
+      div.className = 'episode-box';
+      div.id = `epBox_${episodeCount}`;
+      div.innerHTML = `
+        <div class="episode-header">
+          <label style="color:#2ed573; font-weight:bold;">পর্ব ${episodeCount}</label>
+          <button type="button" class="btn-red" style="width:auto; padding:4px 10px; font-size:11px;" onclick="removeEpisodeRow(${episodeCount})">মুছে ফেলুন</button>
+        </div>
+        <input type="text" class="ep-title" placeholder="পর্বের নাম (যেমন: Episode ${episodeCount})" value="Episode ${episodeCount}" style="margin-bottom:8px;">
+        <textarea class="ep-url" placeholder="সোশ্যাল মিডিয়ার ভিডিও URL বা iFrame দিন"></textarea>
+        <button type="button" class="btn-orange" style="width:auto; padding:8px 14px; font-size:12px; margin-top:8px;" onclick="pickEpisodeVideo(this)">📁 গ্যালারি থেকে ভিডিও আপলোড</button>
+        <input type="file" class="ep-file" accept="video/*" style="display:none;" onchange="uploadEpisodeVideo(this)">
+      `;
+      container.appendChild(div);
+    };
+
+    window.removeEpisodeRow = (id) => {
+      const el = document.getElementById(`epBox_${id}`);
+      if (el) el.remove();
+    };
+
+    window.pickEpisodeVideo = (btn) => {
+      const box = btn.closest('.episode-box');
+      if (box) box.querySelector('.ep-file').click();
+    };
+
+    /* ✅✅ গ্যালারি থেকে পর্বের ভিডিও আপলোড (Cloudinary — ২৫GB ফ্রি, প্রগ্রেস % সহ) */
+    window.uploadEpisodeVideo = (input) => {
+      const file = input.files[0];
+      if (!file) return;
+      const status = document.getElementById('statusText');
+
+      if (file.size > 100 * 1024 * 1024) {
+        alert("ভিডিওটি ১০০MB এর বেশি! Cloudinary ফ্রি প্ল্যানে সর্বোচ্চ ১০০MB আপলোড করা যায়।\n\nবড় ভিডিওর জন্য সোশ্যাল মিডিয়া লিংক (ইউটিউব/ফেসবুক) ব্যবহার করুন।");
+        input.value = "";
+        return;
+      }
+
+      try {
+        status.innerText = "⏳ আপলোড শুরু হচ্ছে... (0%) — পেজ বন্ধ করবেন না!";
+
+        const xhr = new XMLHttpRequest();
+        const formData = new FormData();
+        formData.append('file', file);
+        formData.append('upload_preset', CLOUDINARY_PRESET);
+
+        xhr.open('POST', `https://api.cloudinary.com/v1_1/${CLOUDINARY_CLOUD_NAME}/video/upload`);
+
+        xhr.upload.onprogress = (e) => {
+          if (e.lengthComputable) {
+            const pct = Math.round((e.loaded / e.total) * 100);
+            status.innerText = `⏳ ভিডিও আপলোড হচ্ছে... (${pct}%) — পেজ বন্ধ করবেন না!`;
+          }
+        };
+
+        xhr.onload = () => {
+          if (xhr.status === 200) {
+            const data = JSON.parse(xhr.responseText);
+            const box = input.closest('.episode-box');
+            const ta = box ? box.querySelector('.ep-url') : null;
+            if (ta) ta.value = data.secure_url;
+            status.innerText = "✅ ভিডিও আপলোড শেষ! লিংকটি পর্বের বক্সে বসানো হয়েছে।";
+            input.value = "";
+          } else {
+            let msg = "আপলোড ব্যর্থ (কোড: " + xhr.status + ")";
+            try {
+              const err = JSON.parse(xhr.responseText);
+              if (err.error && err.error.message) msg = err.error.message;
+            } catch(e) {}
+            alert("❌ " + msg);
+            status.innerText = "";
+          }
+        };
+
+        xhr.onerror = () => {
+          alert("❌ নেটওয়ার্ক ত্রুটি! ইন্টারনেট চেক করুন।");
+          status.innerText = "";
+        };
+
+        xhr.send(formData);
+      } catch (err) {
+        alert("ত্রুটি: " + err.message);
+        status.innerText = "";
+      }
+    };
+
+    /* ✅ গ্যালারি থেকে কভার ছবি আপলোড (imgbb) */
+    window.uploadCoverImage = async (input) => {
+      const file = input.files[0];
+      if (!file) return;
+      const status = document.getElementById('statusText');
+
+      if (!IMGBB_API_KEY) {
+        alert("config.js ফাইলে IMGBB_API_KEY পাওয়া যায়নি! সরাসরি ছবির URL বসান।");
+        return;
+      }
+
+      status.innerText = "⏳ ছবি আপলোড হচ্ছে...";
+      try {
+        const fd = new FormData();
+        fd.append("image", file);
+        const res = await fetch(`https://api.imgbb.com/1/upload?key=${IMGBB_API_KEY}`, { method: "POST", body: fd });
+        const data = await res.json();
+        if (data && data.data && data.data.url) {
+          document.getElementById('coverImgUrl').value = data.data.url;
+          status.innerText = "✅ কভার ছবি আপলোড সম্পন্ন!";
+        } else {
+          alert("ছবি আপলোড ব্যর্থ হয়েছে!");
+          status.innerText = "";
+        }
+      } catch (err) {
+        alert("ছবি আপলোড ত্রুটি: " + err.message);
+        status.innerText = "";
+      }
+      input.value = "";
+    };
+
+    // 🚀 অটো-ইমেজ জেনারেট সহ ভিডিও সেভ করা
+    document.getElementById('videoForm').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const title = document.getElementById('title').value;
+      const category = document.getElementById('category').value;
+      const isPremium = document.getElementById('videoType').value === 'premium';
+      const adLimit = parseInt(document.getElementById('adLimit').value) || 0;
+      const videoAdUrl = document.getElementById('videoAdUrl').value.trim();
+      const coverManual = document.getElementById('coverImgUrl').value.trim();
+      const statusText = document.getElementById('statusText');
+      const uploadBtn = document.getElementById('uploadBtn');
+
+      if (!category && !isPremium) return alert("আগে একটি ক্যাটাগরি তৈরি করে সিলেক্ট করুন");
+
+      const epTitles = document.querySelectorAll('.ep-title');
+      const epUrls = document.querySelectorAll('.ep-url');
+
+      if (epUrls.length === 0 || !epUrls[0].value.trim()) {
+        return alert("কমপক্ষে ১টি পর্বের ভিডিও লিংক দিতে হবে!");
+      }
+
+      uploadBtn.disabled = true;
+      statusText.innerText = "⏳ ভিডিও লিংক থেকে অটো-থাম্বনেইল জেনারেট করা হচ্ছে...";
+
+      let episodesList = [];
+      let firstVideoUrl = "";
+      let firstThumbnailUrl = "";
+
+      for (let idx = 0; idx < epTitles.length; idx++) {
+        const rawUrl = epUrls[idx].value.trim();
+        if (rawUrl) {
+          const embedUrl = formatVideoEmbedUrl(rawUrl);
+          
+          /* 🔥 টিকটক হলে oEmbed থেকে ছবি, নাহলে অটো থাম্বনেইল; ম্যানুয়াল কভার থাকলে সেটাই প্রধান */
+          const autoImage = (await fetchTikTokThumb(rawUrl)) || generateAutoThumbnail(rawUrl);
+
+          if (!firstVideoUrl) {
+            firstVideoUrl = embedUrl;
+            firstThumbnailUrl = coverManual || autoImage;
+          }
+
+          episodesList.push({
+            epName: epTitles[idx].value.trim() || `Episode ${idx + 1}`,
+            videoUrl: embedUrl,
+            thumbnailUrl: autoImage,
+            posterUrl: autoImage,
+            imgUrl: autoImage
+          });
+        }
+      }
+
+      try {
+        statusText.innerText = "ডাটাবেসে সেভ হচ্ছে...";
+        const targetNode = isPremium ? 'premiumVideos' : 'videos';
+        
+        const payload = {
+          title: title,
+          category: isPremium ? 'Premium' : category,
+          videoUrl: firstVideoUrl,
+          thumbnailUrl: firstThumbnailUrl,
+          posterUrl: firstThumbnailUrl,
+          imgUrl: firstThumbnailUrl,
+          episodes: episodesList,
+          isSeries: episodesList.length > 1,
+          adLimit: adLimit,
+          createdAt: Date.now()
+        };
+
+        if (videoAdUrl) payload.adUrl = videoAdUrl;
+        
+        await push(ref(db, targetNode), payload);
+        statusText.innerText = "✅ ভিডিও এবং কভার পিকচার সফলভাবে সেভ হয়েছে!";
+        document.getElementById('videoForm').reset();
+        document.getElementById('coverImgUrl').value = "";
+        
+        document.getElementById('episodesContainer').innerHTML = `
+          <div class="episode-box" id="epBox_1">
+            <div class="episode-header"><label style="color:#2ed573; font-weight:bold;">পর্ব ১</label></div>
+            <input type="text" class="ep-title" placeholder="পর্বের নাম (যেমন: Episode 1)" value="Episode 1" style="margin-bottom:8px;">
+            <textarea class="ep-url" placeholder="সোশ্যাল মিডিয়ার ভিডিও URL দিন"></textarea>
+            <button type="button" class="btn-orange" style="width:auto; padding:8px 14px; font-size:12px; margin-top:8px;" onclick="pickEpisodeVideo(this)">📁 গ্যালারি থেকে ভিডিও আপলোড</button>
+            <input type="file" class="ep-file" accept="video/*" style="display:none;" onchange="uploadEpisodeVideo(this)">
+          </div>
+        `;
+        episodeCount = 1;
+        handleTypeChange();
+      } catch (err) {
+        alert("ত্রুটি: " + err.message);
+        statusText.innerText = "";
+      } finally {
+        uploadBtn.disabled = false;
+      }
+    });
+
+    // ৬. ভিডিও ম্যানেজমেন্ট
+    function loadVideos() {
+      onValue(ref(db, 'videos'), () => fetchAndRenderVideos());
+      onValue(ref(db, 'premiumVideos'), () => fetchAndRenderVideos());
+    }
+
+    async function fetchAndRenderVideos() {
+      const videoList = document.getElementById('videoList');
+      
+      try {
+        const freeSnap = await get(ref(db, 'videos'));
+        const premSnap = await get(ref(db, 'premiumVideos'));
+        
+        const freeData = freeSnap.val() || {};
+        const premData = premSnap.val() || {};
+        
+        videoList.innerHTML = "";
+        let hasVideos = false;
+
+        Object.keys(freeData).reverse().forEach((key) => {
+          hasVideos = true;
+          videoList.appendChild(createVideoRow(key, freeData[key], false));
+        });
+
+        Object.keys(premData).reverse().forEach((key) => {
+          hasVideos = true;
+          videoList.appendChild(createVideoRow(key, premData[key], true));
+        });
+
+        if (!hasVideos) {
+          videoList.innerHTML = "<p style='color:#aaa;'>কোনো ভিডিও নাই</p>";
+        }
+      } catch(e) {
+        console.error("Error loading videos:", e);
+      }
+    }
+
+    function createVideoRow(key, item, isPremium) {
+      const epCount = item.episodes ? item.episodes.length : 1;
+      const thumb = item.imgUrl || item.posterUrl || item.thumbnailUrl || '';
+      const div = document.createElement('div');
+      div.className = 'item-list';
+      div.innerHTML = `
+        <div style="display:flex; align-items:center; gap:10px;" class="item-info">
+          ${thumb ? `<img src="${thumb}" style="width:50px; height:50px; object-fit:cover; border-radius:4px;">` : ''}
+          <div>
+            <h4>${item.title} <small style="color:#ff7f50;">(${epCount} টি পর্ব)</small></h4>
+            <span class="${isPremium ? 'badge-prem' : ''}">${isPremium ? `🔒 PREMIUM (${item.adLimit || 0} Ads)` : `${item.category || 'General'} (${item.adLimit || 0} Ads)`}</span>
+          </div>
+        </div>
+        <div class="action-btns">
+          <button class="btn-blue" onclick="editVideo('${key}', '${item.title}', '${item.category || ''}', ${isPremium}, ${item.adLimit || 0}, '${item.adUrl || ''}')">এডিট</button>
+          <button class="btn-red" onclick="deleteVideo('${key}', ${isPremium})">ডিলিট</button>
+        </div>
+      `;
+      return div;
+    }
+
+    window.deleteVideo = async (key, isPremium) => {
+      const path = isPremium ? `premiumVideos/${key}` : `videos/${key}`;
+      if (confirm("আপনি কি নিশ্চিত এই ভিডিও সম্পূর্ণ ডিলিট করতে চান?")) {
+        await remove(ref(db, path));
+        alert("ডিলিট হয়েছে!");
+      }
+    };
+
+    window.editVideo = async (key, currentTitle, currentCat, isPremium, currentAdLimit, currentAdUrl) => {
+      const newTitle = prompt("নতুন ভিডিও টাইটেল দিন:", currentTitle);
+      if (!newTitle) return;
+
+      const path = isPremium ? `premiumVideos/${key}` : `videos/${key}`;
+      const updateData = { title: newTitle };
+
+      const newAdLimit = prompt("কতগুলো এড দেখতে হবে?:", currentAdLimit);
+      const newAdUrl = prompt("আলাদা Adsterra Direct Link (যদি দিতে চান):", currentAdUrl);
+      
+      if (newAdLimit) updateData.adLimit = parseInt(newAdLimit);
+      if (newAdUrl !== null) updateData.adUrl = newAdUrl;
+
+      if (!isPremium) {
+        const newCat = prompt("নতুন ক্যাটাগরি দিন:", currentCat);
+        if (newCat) updateData.category = newCat;
+      }
+
+      await update(ref(db, path), updateData);
+      alert("আপডেট হয়েছে!");
+    };
+
+    // ৭. প্রিমিয়াম রিকোয়েস্ট
+    function loadAccessRequests() {
+      onValue(ref(db, 'accessRequests'), (snapshot) => {
+        const reqList = document.getElementById('requestList');
+        reqList.innerHTML = "";
+        const data = snapshot.val();
+
+        if (data) {
+          let count = 0;
+          Object.keys(data).forEach((userId) => {
+            const req = data[userId];
+            count++;
+            const div = document.createElement('div');
+            div.className = 'item-list';
+            div.innerHTML = `
+              <div class="item-info">
+                <h4>ইমেইল/ইউজার: ${req.userEmail || 'Guest'}</h4>
+                <p style="font-size:11px; color:#aaa;">ID: ${userId} | সময়: ${req.requestedAt || ''}</p>
+                <span style="background:${req.status === 'approved' ? '#2ed573' : '#ff9800'}; color:#000;">
+                  স্ট্যাটাস: ${req.status || 'pending'}
+                </span>
+              </div>
+              <div class="action-btns">
+                <button class="btn-green" onclick="updateRequestStatus('${userId}', 'approved')">Approve</button>
+                <button class="btn-orange" onclick="updateRequestStatus('${userId}', 'rejected')">Reject</button>
+                <button class="btn-dark-red" onclick="deleteAccessRequest('${userId}')">Delete</button>
+              </div>
+            `;
+            reqList.appendChild(div);
+          });
+          if (count === 0) reqList.innerHTML = "<p style='color:#aaa;'>কোনো রিকোয়েস্ট নাই</p>";
+        } else {
+          reqList.innerHTML = "<p style='color:#aaa;'>কোনো রিকোয়েস্ট নাই</p>";
+        }
+      });
+    }
+
+    window.updateRequestStatus = async (userId, status) => {
+      try {
+        await update(ref(db, `accessRequests/${userId}`), { status: status });
+        alert(`পারমিশন ${status === 'approved' ? 'দেওয়া হয়েছে (Approved)' : 'বাতিল করা হয়েছে (Rejected)'}`);
+      } catch (err) {
+        alert("ত্রুটি: " + err.message);
+      }
+    };
+
+    window.deleteAccessRequest = async (userId) => {
+      if (confirm("আপনি কি নিশ্চিত এই রিকোয়েস্টটি মুছে ফেলতে চান?")) {
+        try {
+          await remove(ref(db, `accessRequests/${userId}`));
+          alert("রিকোয়েস্টটি ডিলিট হয়েছে!");
+        } catch (err) {
+          alert("ডিলিট হতে সমস্যা হয়েছে: " + err.message);
+        }
+      }
+    };
+
+    // ৮. Adsterra অ্যাডসের কন্ট্রোল
+    document.getElementById('adForm').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      try {
+        await set(ref(db, 'settings/adConfig/adUrl'), document.getElementById('adUrl').value.trim());
+        await set(ref(db, 'settings/adConfig/adInterval'), document.getElementById('adInterval').value);
+        await set(ref(db, 'settings/adConfig/popupAdCode'), document.getElementById('popupAdCode').value.trim());
+        await set(ref(db, 'settings/adConfig/socialBarAdCode'), document.getElementById('socialBarAdCode').value.trim());
+        await set(ref(db, 'settings/adConfig/nativeAdCode'), document.getElementById('nativeAdCode').value.trim());
+        await set(ref(db, 'settings/adConfig/topBannerCode'), document.getElementById('topBannerCode').value.trim());
+        await set(ref(db, 'settings/adConfig/bottomBannerCode'), document.getElementById('bottomBannerCode').value.trim());
+        alert("✅ Adsterra-এর সকল অ্যাড সেটিংস সেভ হয়েছে!");
+      } catch (err) {
+        alert("সেভ হয়নি: " + err.message);
+      }
+    });
+
+    function loadSettings() {
+      onValue(ref(db, 'settings/adConfig'), (snapshot) => {
+        const data = snapshot.val();
+        if (data) {
+          if (data.adUrl !== undefined) document.getElementById('adUrl').value = data.adUrl;
+          if (data.adInterval !== undefined) document.getElementById('adInterval').value = data.adInterval;
+          if (data.popupAdCode !== undefined) document.getElementById('popupAdCode').value = data.popupAdCode;
+          if (data.socialBarAdCode !== undefined) document.getElementById('socialBarAdCode').value = data.socialBarAdCode;
+          if (data.nativeAdCode !== undefined) document.getElementById('nativeAdCode').value = data.nativeAdCode;
+          if (data.topBannerCode !== undefined) document.getElementById('topBannerCode').value = data.topBannerCode;
+          if (data.bottomBannerCode !== undefined) document.getElementById('bottomBannerCode').value = data.bottomBannerCode;
+        }
+      });
+    }
+  </script>
 </head>
 <body>
-    <div class="preview-panel"><canvas id="canvas"></canvas></div>
-    <div class="controls-panel">
-        <div class="control-section"><h3>.    </h3><label for="imageLoader" class="file-label btn-primary">   </label><input type="file" id="imageLoader" accept="image/*"><button id="resetBtn" class="btn-warning">  </button></div>
-        <div id="mainControls" class="hidden-controls">
-            <div class="control-section"><h3>. </h3><div style="display: flex; flex-direction: column; gap: 10px;"><button id="removeBgFastBtn" class="btn-info">  ()</button><button id="removeBgHQBtn" class="btn-danger">   ()</button></div><div id="loader" class="hidden-controls"> ...</div><label for="bgColorPicker" style="margin-top: 15px;"> :</label><input type="color" id="bgColorPicker" value="#ffffff" style="width: 100%; height: 40px;"></div>
-            <div class="control-section"><h3>.  </h3><label for="overlayImageLoader" class="file-label btn-secondary">/  </label><input type="file" id="overlayImageLoader" accept="image/*"><button id="addTextBtn" class="btn-primary" style="margin-top: 10px;">   </button></div>
-            <div id="contextualControls" class="control-section hidden-controls"><h3>.   </h3><div id="textEditor"><label> :</label><input type="text" id="textInput" placeholder=" ..."><div class="input-group"><label>:</label><input type="color" id="textColorPicker"><label>:</label><input type="color" id="strokeColorPicker"></div><label>:</label><select id="fontSelector"><option>Arial</option><option>Impact</option><option>Comic Sans MS</option></select></div><button id="deleteBtn" class="btn-danger" style="margin-top: 15px;"> </button></div>
-            <div class="control-section"><h3>.   </h3><button id="generateLinkBtn" class="btn-success">    </button></div>
-        </div>
+
+  <!-- এডমিন লগইন -->
+  <div class="card" id="loginSection">
+    <h2>🔒 এডমিন লগইন</h2>
+    <form id="loginForm">
+      <div class="form-group">
+        <label>ইমেইল:</label>
+        <input type="email" id="loginEmail" required placeholder="admin@gmail.com">
+      </div>
+      <div class="form-group">
+        <label>পাসওয়ার্ড:</label>
+        <input type="password" id="loginPass" required placeholder="******">
+      </div>
+      <button type="submit" class="btn-blue">লগইন করুন</button>
+    </form>
+    <div id="loginError" style="color: #ff4757; margin-top: 10px; font-size: 13px;"></div>
+  </div>
+
+  <!-- ড্যাশবোর্ড -->
+  <div id="adminSection">
+    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
+      <h1 style="font-size: 20px; color: #ff4757;">এডমিন কন্ট্রোল প্যানেল</h1>
+      <button id="logoutBtn" class="btn-red" style="width: auto; padding: 8px 15px;">লগআউট</button>
     </div>
 
-    <div id="linkModal" class="modal">
-        <div class="modal-content">
-            <div class="modal-header"><h3 id="modalTitle"> </h3></div>
-            <div class="modal-body" id="imageLinksContainer"></div>
-            <div class="modal-footer"><button id="closeModalBtn" class="btn-secondary"> </button></div>
-        </div>
+    <!-- ক্যাটাগরি -->
+    <div class="card">
+      <h2>📁 ক্যাটাগরি ম্যানেজমেন্ট</h2>
+      <form id="catForm" style="display: flex; gap: 10px; margin-bottom: 15px;">
+        <input type="text" id="newCategoryName" placeholder="ক্যাটাগরির নাম লিখুন" required>
+        <button type="submit" class="btn-green" style="width: 140px;">যোগ করুন</button>
+      </form>
+      <div id="categoryList">লোডিং...</div>
     </div>
 
-    <script>
-        document.addEventListener('DOMContentLoaded', () => {
-            const REMOVEBG_API_KEY = "qwKyFZ2ETk3equVWD6jYg51Z";
-            const IMGBB_API_KEY = "07bb6a485d95048a7add76d3207d44be";
-            let originalFile = null;
+    <!-- ব্যানার -->
+    <div class="card">
+      <h2>🖼️ হিরো ব্যানার স্লাইডার</h2>
+      <form id="bannerForm">
+        <div class="form-group">
+          <label>ব্যানার ইমেজ URL:</label>
+          <input type="url" id="bannerImg" required>
+        </div>
+        <div class="form-group">
+          <label>ব্যানার টাইটেল:</label>
+          <input type="text" id="bannerTitle">
+        </div>
+        <div class="form-group">
+          <label>রিডাইরেক্ট URL:</label>
+          <input type="url" id="bannerLink">
+        </div>
+        <button type="submit" class="btn-blue">নতুন ব্যানার যুক্ত করুন</button>
+      </form>
+      <div id="bannerList" style="margin-top: 10px;">লোডিং...</div>
+    </div>
 
-            const fabricCanvas = new fabric.Canvas('canvas', { backgroundColor: '#f8f9fa' });
+    <!-- অটো থাম্বনেইল সহ ভিডিও আপলোড -->
+    <div class="card">
+      <h2>🎥 নতুন ভিডিও আপলোড (অটো-ইমেজ জেনারেট)</h2>
+      <form id="videoForm">
+        <div class="form-group">
+          <label>ড্রামা / সিনেমার নাম:</label>
+          <input type="text" id="title" required placeholder="ভিডিও বা ড্রামার নাম দিন">
+        </div>
 
-            // ---  DOM  ---
-            const mainControls = document.getElementById('mainControls'), imageLoader = document.getElementById('imageLoader');
-            const resetBtn = document.getElementById('resetBtn'), removeBgFastBtn = document.getElementById('removeBgFastBtn');
-            const loader = document.getElementById('loader'), bgColorPicker = document.getElementById('bgColorPicker');
-            const overlayImageLoader = document.getElementById('overlayImageLoader'), addTextBtn = document.getElementById('addTextBtn');
-            const contextualControls = document.getElementById('contextualControls'), textEditor = document.getElementById('textEditor');
-            const textInput = document.getElementById('textInput'), textColorPicker = document.getElementById('textColorPicker');
-            const strokeColorPicker = document.getElementById('strokeColorPicker'), fontSelector = document.getElementById('fontSelector');
-            const deleteBtn = document.getElementById('deleteBtn'), generateLinkBtn = document.getElementById('generateLinkBtn');
-            const linkModal = document.getElementById('linkModal'), modalTitle = document.getElementById('modalTitle');
-            const imageLinksContainer = document.getElementById('imageLinksContainer'), closeModalBtn = document.getElementById('closeModalBtn');
-            const canvasWrapper = document.querySelector('.preview-panel');
+        <div class="form-group">
+          <label>ভিডিও টাইপ:</label>
+          <select id="videoType" onchange="handleTypeChange()">
+            <option value="free">ফ্রি ভিডিও</option>
+            <option value="premium">🔒 প্রিমিয়াম ভিডিও</option>
+          </select>
+        </div>
 
-            // ---    ---
-            const updateCanvasSize = (img) => {
-                const maxW = canvasWrapper.clientWidth * 0.95, maxH = canvasWrapper.clientHeight * 0.95;
-                const scale = Math.min(maxW / img.width, maxH / img.height);
-                fabricCanvas.setDimensions({ width: img.width * scale, height: img.height * scale });
-            };
+        <div class="form-group" id="categoryGroup">
+          <label>ভিডিও ক্যাটাগরি:</label>
+          <select id="category"></select>
+        </div>
 
-            const loadImageOnCanvas = (file) => {
-                const reader = new FileReader();
-                reader.onload = (event) => {
-                    fabric.Image.fromURL(event.target.result, img => {
-                        fabricCanvas.clear(); updateCanvasSize(img);
-                        fabricCanvas.setBackgroundImage(img, fabricCanvas.renderAll.bind(fabricCanvas), { scaleX: fabricCanvas.width / img.width, scaleY: fabricCanvas.height / img.height });
-                    });
-                };
-                reader.readAsDataURL(file);
-            };
+        <div class="form-group">
+          <label>কতটি এড দেখতে হবে?:</label>
+          <input type="number" id="adLimit" value="5">
+        </div>
+        
+        <div class="form-group">
+          <label>Adsterra Direct Link (ঐচ্ছিক):</label>
+          <input type="text" id="videoAdUrl" placeholder="https://...">
+        </div>
 
-            const handleBgRemoval = (blob) => {
-                const reader = new FileReader();
-                reader.onload = (event) => {
-                    fabric.Image.fromURL(event.target.result, (newImg) => {
-                        fabricCanvas.setBackgroundImage(null, fabricCanvas.renderAll.bind(fabricCanvas));
-                        newImg.scaleToWidth(fabricCanvas.width);
-                        fabricCanvas.add(newImg).centerObject(newImg).renderAll();
-                    });
-                };
-                reader.readAsDataURL(blob);
-            };
+        <!-- ✅ কভার ছবি আপলোড -->
+        <div class="form-group">
+          <label>🖼️ কভার ছবি (ঐচ্ছিক — না দিলে অটো থাম্বনেইল তৈরি হবে):</label>
+          <input type="text" id="coverImgUrl" placeholder="অটো থাম্বনেইল ব্যবহার হবে">
+          <button type="button" class="btn-orange" style="width:auto; padding:8px 14px; font-size:13px; margin-top:8px;" onclick="document.getElementById('coverFileInput').click()">🖼️ গ্যালারি থেকে কভার ছবি আপলোড</button>
+          <input type="file" id="coverFileInput" accept="image/*" style="display:none;" onchange="uploadCoverImage(this)">
+        </div>
 
-            // ---         ---
-            const updateContextualControls = () => {
-                const activeObject = fabricCanvas.getActiveObject();
-                if (activeObject && activeObject.type === 'i-text') {
-                    contextualControls.style.display = 'block';
-                    textEditor.style.display = 'block';
-                    textInput.value = activeObject.text;
-                    textColorPicker.value = activeObject.fill;
-                    strokeColorPicker.value = activeObject.stroke || '#ffffff';
-                    fontSelector.value = activeObject.fontFamily;
-                } else {
-                    contextualControls.style.display = 'none';
-                }
-            };
-            
-            fabricCanvas.on({ 'selection:created': updateContextualControls, 'selection:updated': updateContextualControls, 'selection:cleared': updateContextualControls });
+        <!-- পর্বসমূহ -->
+        <div class="form-group" style="background:#181818; padding:15px; border-radius:8px; border:1px solid #333;">
+          <label style="color:#ff7f50; font-weight:bold; font-size:15px; margin-bottom:12px;">📺 পর্বের লিংক বসান (কভার অটো তৈরি হবে):</label>
+          
+          <div id="episodesContainer">
+            <div class="episode-box" id="epBox_1">
+              <div class="episode-header"><label style="color:#2ed573; font-weight:bold;">পর্ব ১</label></div>
+              <input type="text" class="ep-title" placeholder="পর্বের নাম" value="Episode 1" style="margin-bottom:8px;">
+              <textarea class="ep-url" placeholder="সোশ্যাল মিডিয়ার ভিডিও URL দিন"></textarea>
+              <button type="button" class="btn-orange" style="width:auto; padding:8px 14px; font-size:12px; margin-top:8px;" onclick="pickEpisodeVideo(this)">📁 গ্যালারি থেকে ভিডিও আপলোড</button>
+              <input type="file" class="ep-file" accept="video/*" style="display:none;" onchange="uploadEpisodeVideo(this)">
+            </div>
+          </div>
 
-            // ---    ---
-            imageLoader.addEventListener('change', e => {
-                if (!e.target.files.length) return;
-                originalFile = e.target.files[0];
-                mainControls.style.display = 'block';
-                loadImageOnCanvas(originalFile);
-            });
+          <button type="button" class="btn-blue" style="margin-top:10px;" onclick="addEpisodeRow()">➕ আরো পর্ব যুক্ত করুন</button>
+          <p class="hint">💡 URL বসাতে পারেন অথবা 📁 বাটনে ক্লিক করে ফোনের গ্যালারি থেকে সরাসরি ভিডিও আপলোড করতে পারেন (সর্বোচ্চ ১০০MB)।</p>
+        </div>
 
-            removeBgFastBtn.addEventListener('click', () => {
-                if (!originalFile) return alert('   ');
-                loader.classList.remove('hidden-controls'); loader.textContent = '  ...';
-                const formData = new FormData(); formData.append('image_file', originalFile);
-                fetch('https://api.remove.bg/v1.0/removebg', { method: 'POST', headers: { 'X-Api-Key': REMOVEBG_API_KEY }, body: formData })
-                    .then(res => res.ok ? res.blob() : Promise.reject('API Error'))
-                    .then(blob => { handleBgRemoval(blob); loader.classList.add('hidden-controls'); })
-                    .catch(() => { loader.classList.add('hidden-controls'); alert("  "); });
-            });
+        <button type="submit" id="uploadBtn" class="btn-green">পাবলিশ করুন</button>
+      </form>
+      <div id="statusText"></div>
+    </div>
 
-            overlayImageLoader.addEventListener('change', e => {
-                if (!e.target.files.length) return;
-                const reader = new FileReader();
-                reader.onload = event => fabric.Image.fromURL(event.target.result, img => { img.scaleToWidth(fabricCanvas.width * 0.3); fabricCanvas.add(img).centerObject(img).renderAll(); });
-                reader.readAsDataURL(e.target.files[0]);
-            });
+    <!-- রিকোয়েস্ট -->
+    <div class="card">
+      <h2>🔑 প্রিমিয়াম এক্সেস রিকোয়েস্ট</h2>
+      <div id="requestList">লোডিং...</div>
+    </div>
 
-            addTextBtn.addEventListener('click', () => {
-                const text = new fabric.IText(' ', {
-                    left: 50, top: 50, fill: '#000000', fontFamily: 'Arial',
-                    stroke: '#ffffff', strokeWidth: 0 //    
-                });
-                fabricCanvas.add(text).setActiveObject(text);
-            });
+    <!-- ম্যানেজমেন্ট -->
+    <div class="card">
+      <h2>📂 ভিডিও ম্যানেজমেন্ট</h2>
+      <div id="videoList">লোডিং...</div>
+    </div>
 
-            textInput.addEventListener('input', (e) => {
-                const activeObject = fabricCanvas.getActiveObject();
-                if (activeObject && activeObject.type === 'i-text') {
-                    activeObject.set('text', e.target.value);
-                    fabricCanvas.requestRenderAll();
-                }
-            });
+    <!-- অ্যাড কন্ট্রোল -->
+    <div class="card">
+      <h2>🚀 Adsterra অ্যাড সেটিংস</h2>
+      <form id="adForm">
+        <div class="form-group">
+          <label>Direct Link:</label>
+          <input type="text" id="adUrl" placeholder="https://...">
+        </div>
+        <div class="form-group">
+          <label>⏱️ স্ক্রিন ক্লিক এড সময়সীমা (মিনিট):</label>
+          <input type="number" id="adInterval" value="15" min="0" step="1" placeholder="যেমন: 10, 15, 20">
+          <p class="hint">💡 সংখ্যা লিখুন — তত মিনিট পর পর স্ক্রিন ক্লিকে এড দেখাবে।<br>
+          ✅ <b>10 / 15 / 20</b> = তত মিনিট পর পর এড<br>
+          ❌ <b>0</b> দিলে = স্ক্রিন ক্লিক এড সম্পূর্ণ বন্ধ</p>
+        </div>
+        <div class="form-group">
+          <label>Popunder Ad Code:</label>
+          <textarea id="popupAdCode"></textarea>
+        </div>
+        <div class="form-group">
+          <label>Social Bar Ad Code:</label>
+          <textarea id="socialBarAdCode"></textarea>
+        </div>
+        <div class="form-group">
+          <label>Native Banner Ad Code:</label>
+          <textarea id="nativeAdCode"></textarea>
+        </div>
+        <div class="form-group">
+          <label>Top Banner Ad Code:</label>
+          <textarea id="topBannerCode"></textarea>
+        </div>
+        <div class="form-group">
+          <label>Bottom Banner Ad Code:</label>
+          <textarea id="bottomBannerCode"></textarea>
+        </div>
+        <button type="submit" class="btn-orange">সেটিং সেভ করুন</button>
+      </form>
+    </div>
 
-            textColorPicker.addEventListener('input', (e) => {
-                const activeObject = fabricCanvas.getActiveObject();
-                if (activeObject && activeObject.type === 'i-text') {
-                    activeObject.set('fill', e.target.value);
-                    fabricCanvas.requestRenderAll();
-                }
-            });
+  </div>
 
-            strokeColorPicker.addEventListener('input', (e) => {
-                const activeObject = fabricCanvas.getActiveObject();
-                if (activeObject && activeObject.type === 'i-text') {
-                    activeObject.set('stroke', e.target.value);
-                    if (activeObject.strokeWidth === 0) {
-                        activeObject.set('strokeWidth', 1); //    
-                    }
-                    fabricCanvas.requestRenderAll();
-                }
-            });
-            
-            fontSelector.addEventListener('change', (e) => {
-                const activeObject = fabricCanvas.getActiveObject();
-                if (activeObject && activeObject.type === 'i-text') {
-                    activeObject.set('fontFamily', e.target.value);
-                    fabricCanvas.requestRenderAll();
-                }
-            });
-
-            deleteBtn.addEventListener('click', () => {
-                const activeObject = fabricCanvas.getActiveObject();
-                if(activeObject) fabricCanvas.remove(activeObject);
-            });
-
-            resetBtn.addEventListener('click', () => {
-                fabricCanvas.clear(); fabricCanvas.backgroundColor = '#f8f9fa'; fabricCanvas.renderAll();
-                mainControls.style.display = 'none';
-                contextualControls.style.display = 'none';
-                originalFile = null;
-            });
-
-            bgColorPicker.addEventListener('input', e => {
-                fabricCanvas.backgroundColor = e.target.value;
-                fabricCanvas.renderAll();
-            });
-
-            generateLinkBtn.addEventListener('click', () => {
-                if (fabricCanvas.isEmpty() && !fabricCanvas.backgroundImage) return alert("     ");
-                fabricCanvas.discardActiveObject().renderAll();
-                
-                modalTitle.textContent = "  ...";
-                imageLinksContainer.innerHTML = '<p style="text-align: center;">   ...</p>';
-                linkModal.style.display = 'flex';
-                
-                const dataURL = fabricCanvas.toDataURL({ format: 'png', multiplier: 3 });
-                const base64Data = dataURL.replace(/^data:image\/png;base64,/, "");
-                const formData = new FormData();
-                formData.append('image', base64Data);
-
-                fetch(`https://api.imgbb.com/1/upload?key=${IMGBB_API_KEY}`, { method: 'POST', body: formData })
-                .then(response => response.json())
-                .then(result => {
-                    if (result.success) {
-                        modalTitle.textContent = " "; imageLinksContainer.innerHTML = '';
-                        const data = result.data;
-                        const links = [
-                            { label: '', value: data.url_viewer }, { label: ' ', value: data.url },
-                            { label: 'Markdown', value: `![${data.title}](${data.url})` },
-                            { label: 'HTML Thumbnail', value: `<a href="${data.url_viewer}"><img src="${data.thumb.url}" alt="${data.title}"></a>` },
-                            { label: 'BBCode Thumbnail', value: `[url=${data.url_viewer}][img]${data.thumb.url}[/img][/url]` },
-                            { label: ' ', value: data.delete_url }
-                        ];
-
-                        links.forEach(link => {
-                            const row = document.createElement('div'); row.className = 'link-row';
-                            const label = document.createElement('label'); label.className = 'link-label'; label.textContent = link.label + ':';
-                            const input = document.createElement('input'); input.type = 'text'; input.className = 'link-input'; input.value = link.value; input.readOnly = true;
-                            const button = document.createElement('button'); button.className = 'copy-btn btn-primary'; button.textContent = '';
-                            button.onclick = () => { input.select(); navigator.clipboard.writeText(input.value).then(() => { button.textContent = ' !'; setTimeout(() => { button.textContent = ''; }, 2000); }); };
-                            row.appendChild(label); row.appendChild(input); row.appendChild(button);
-                            imageLinksContainer.appendChild(row);
-                        });
-                    } else { throw new Error(result.error.message); }
-                })
-                .catch(error => { alert(',    \n' + error.message); linkModal.style.display = 'none'; });
-            });
-
-            closeModalBtn.addEventListener('click', () => { linkModal.style.display = 'none'; });
-            window.addEventListener('click', (event) => { if (event.target == linkModal) linkModal.style.display = 'none'; });
-        });
-    </script>
 </body>
 </html>
